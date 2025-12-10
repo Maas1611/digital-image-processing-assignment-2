@@ -1,0 +1,80 @@
+import cv2
+import numpy as np
+
+# -----------------------------
+# 1. Load contact-sheet image
+# -----------------------------
+img_path = "contact_sheet.png"   # <-- change to your file name
+full = cv2.imread(img_path)
+
+if full is None:
+    raise FileNotFoundError("Cannot load input image!")
+
+h, w = full.shape[:2]
+
+# -----------------------------
+# 2. Split into a 2×2 grid
+# -----------------------------
+mid_y = h // 2
+mid_x = w // 2
+
+tiles = [
+    full[0:mid_y, 0:mid_x],     # TL
+    full[0:mid_y, mid_x:w],     # TR
+    full[mid_y:h, 0:mid_x],     # BL
+    full[mid_y:h, mid_x:w]      # BR
+]
+
+# -----------------------------
+# 3. Center-crop each tile to same size
+# -----------------------------
+min_h = min(t.shape[0] for t in tiles)
+min_w = min(t.shape[1] for t in tiles)
+
+def center_crop(img, th, tw):
+    h, w = img.shape[:2]
+    y0 = (h - th) // 2
+    x0 = (w - tw) // 2
+    return img[y0:y0+th, x0:x0+tw]
+
+tiles = [center_crop(t, min_h, min_w) for t in tiles]
+
+# -----------------------------
+# 4. Define exposure times
+# (replace with real EXIF if known)
+# -----------------------------
+exposure_times = np.array([1/30, 1/15, 1/8, 1/4], dtype=np.float32)
+
+# -----------------------------
+# 5. Estimate Camera Response Function (Debevec)
+# -----------------------------
+calibrate = cv2.createCalibrateDebevec()
+crf = calibrate.process(tiles, times=exposure_times)
+
+# -----------------------------
+# 6. Merge exposures into HDR radiance map
+# -----------------------------
+merge = cv2.createMergeDebevec()
+hdr = merge.process(tiles, times=exposure_times, response=crf)
+
+# Save HDR file
+cv2.imwrite("result.hdr", hdr)
+
+# -----------------------------
+# 7. Tone map using Reinhard global operator
+# -----------------------------
+tonemap = cv2.createTonemapReinhard(
+    gamma=1.0,
+    intensity=0.0,
+    light_adapt=1.0,
+    color_adapt=0.0
+)
+
+ldr = tonemap.process(hdr)
+ldr_8bit = np.clip(ldr * 255, 0, 255).astype(np.uint8)
+
+# Save tone-mapped result
+cv2.imwrite("result_tonemapped.png", ldr_8bit)
+
+print("HDR saved as result.hdr")
+print("Tone-mapped LDR saved as result_tonemapped.png")
