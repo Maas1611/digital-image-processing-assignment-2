@@ -1,0 +1,84 @@
+import cv2
+import numpy as np
+
+# ---------------------------------------------------
+# 1. Load image (color)
+# ---------------------------------------------------
+img = cv2.imread("Torgya_Festival.jpg")    # <-- update filename
+if img is None:
+    raise FileNotFoundError("Image not found!")
+
+img = img.astype(np.float32)
+
+# ---------------------------------------------------
+# 2. BOX FILTERS (5x5 and 20x20)
+# ---------------------------------------------------
+
+# ---- without normalization ----
+def box_filter_no_norm(img, k):
+    kernel = np.ones((k, k), dtype=np.float32)
+    return cv2.filter2D(img, -1, kernel)
+
+# ---- with normalization ----
+def box_filter_norm(img, k):
+    kernel = np.ones((k, k), dtype=np.float32) / (k * k)
+    return cv2.filter2D(img, -1, kernel)
+
+box_5_no_norm  = box_filter_no_norm(img, 5)
+box_5_norm     = box_filter_norm(img, 5)
+
+box_20_no_norm = box_filter_no_norm(img, 20)
+box_20_norm    = box_filter_norm(img, 20)
+
+# ---------------------------------------------------
+# 3. Compute σ for color image
+# ---------------------------------------------------
+# Use average σ across RGB channels
+sigma = np.mean(np.std(img.reshape(-1, 3), axis=0))
+
+print("Computed σ =", sigma)
+
+# Compute Gaussian filter size = 2πσ
+gauss_size = int(2 * np.pi * sigma)
+
+# filter size must be odd
+if gauss_size % 2 == 0:
+    gauss_size += 1
+
+print("Gaussian kernel size =", gauss_size)
+
+# ---------------------------------------------------
+# 4. Build 1D Gaussian kernel (separable)
+# ---------------------------------------------------
+def gaussian_1d(sigma, size):
+    ax = np.arange(-(size // 2), size // 2 + 1)
+    g = np.exp(-(ax ** 2) / (2 * sigma ** 2))
+    return g.astype(np.float32)
+
+# Unnormalized Gaussian
+g = gaussian_1d(sigma, gauss_size)
+
+# Normalized Gaussian
+g_norm = g / np.sum(g)
+
+# ---------------------------------------------------
+# 5. Apply separable Gaussian filtering
+# ---------------------------------------------------
+# Unnormalized Gaussian (horizontal → vertical)
+gauss_sep = cv2.sepFilter2D(img, -1, g, g)
+
+# Normalized Gaussian
+gauss_norm_sep = cv2.sepFilter2D(img, -1, g_norm, g_norm)
+
+# ---------------------------------------------------
+# 6. Save outputs
+# ---------------------------------------------------
+cv2.imwrite("box5_no_norm.png",  box_5_no_norm)
+cv2.imwrite("box5_norm.png",     box_5_norm)
+cv2.imwrite("box20_no_norm.png", box_20_no_norm)
+cv2.imwrite("box20_norm.png",    box_20_norm)
+
+cv2.imwrite("gaussian_sep.png",       gauss_sep)
+cv2.imwrite("gaussian_norm_sep.png",  gauss_norm_sep)
+
+print("All filtered images saved.")
