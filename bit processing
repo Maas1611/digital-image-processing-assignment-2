@@ -1,0 +1,45 @@
+import cv2
+import numpy as np
+
+# ---------------------------------------------------------------
+# 1. LOAD IMAGE (your low-light or bright-light photo)
+# ---------------------------------------------------------------
+img = cv2.imread("input.jpg")   # change filename
+if img is None:
+    raise FileNotFoundError("Image not found!")
+
+# Convert to grayscale for bit-planes
+gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+# ---------------------------------------------------------------
+# 2. COMPUTE 8 BIT-PLANES
+# ---------------------------------------------------------------
+bit_planes = []
+
+for bit in range(8):         # 0 = LSB, 7 = MSB
+    plane = (gray >> bit) & 1
+    plane_img = (plane * 255).astype(np.uint8)
+    bit_planes.append(plane_img)
+    cv2.imwrite(f"bit_plane_{bit}.png", plane_img)
+
+print("Saved bit planes 0–7")
+
+# ---------------------------------------------------------------
+# 3. RECONSTRUCT using union of three LOWEST bit-planes
+#     bit 0, bit 1, bit 2
+# ---------------------------------------------------------------
+reconstructed = (
+    (bit_planes[0] // 255) * (2**0) +
+    (bit_planes[1] // 255) * (2**1) +
+    (bit_planes[2] // 255) * (2**2)
+).astype(np.uint8)
+
+cv2.imwrite("reconstructed_low3.png", reconstructed)
+
+# ---------------------------------------------------------------
+# 4. DIFFERENCE IMAGE
+# ---------------------------------------------------------------
+difference = cv2.absdiff(gray, reconstructed)
+cv2.imwrite("difference_image.png", difference)
+
+print("Reconstruction and difference saved.")
